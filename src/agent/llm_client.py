@@ -59,9 +59,14 @@ class LLMGateway:
                    api_key: str, temperature: float, context_metrics: Optional[dict],
                    chat_history: Optional[List[Dict[str, str]]] = None) -> str:
         """Execute request via Groq Cloud API with multi-turn conversation memory."""
+        # Ensure system prompt incorporates the active user profile (Sagar, Team rv2)
+        base_sys = system_prompt or "You are the Sovereign Industrial AI Assistant for Team rv2 (Build with Bharat 2.0)."
+        if "Sagar" not in base_sys:
+            base_sys += " The active user is Sagar, Lead Inspection Engineer. Respond helpfully, clearly, and naturally."
+
         try:
             import litellm
-            messages = [{"role": "system", "content": system_prompt}] if system_prompt else []
+            messages = [{"role": "system", "content": base_sys}]
             if chat_history:
                 for msg in chat_history:
                     role = msg.get("role", "user")
@@ -70,14 +75,22 @@ class LLMGateway:
                         messages.append({"role": role, "content": content})
             messages.append({"role": "user", "content": prompt})
 
-            resp = litellm.completion(
-                model="groq/qwen/qwen3.8-27b",
-                messages=messages,
-                api_key=api_key,
-                temperature=temperature,
-                timeout=15.0
-            )
-            return resp.choices[0].message.content
+            # Attempt supported Groq models with timeout
+            models_to_try = ["groq/qwen/qwen3.8-27b", "groq/qwen/qwen3.6-27b"]
+            for m in models_to_try:
+                try:
+                    resp = litellm.completion(
+                        model=m,
+                        messages=messages,
+                        api_key=api_key,
+                        temperature=temperature,
+                        timeout=12.0
+                    )
+                    return resp.choices[0].message.content
+                except Exception:
+                    continue
+
+            return self._offline_generator(engine, prompt, context_metrics, chat_history)
         except Exception:
             return self._offline_generator(engine, prompt, context_metrics, chat_history)
 
@@ -196,48 +209,87 @@ print(f"Deficit: {deficit} mm")
 
     def _handle_general_query(self, prompt: str, engine: str = "reasoning-engine",
                               chat_history: Optional[List[Dict[str, str]]] = None) -> str:
-        """Handle greetings, coding requests, and general technical inquiries conversationally with memory."""
+        """Handle greetings, identity inquiries, coding requests, and general technical inquiries conversationally with memory."""
         p = prompt.strip().lower()
 
-        # Build context from previous conversation turns
-        history_text = ""
+        # Detect active user name (defaulting to Sagar as configured in UI profile)
+        user_name = "Sagar"
         if chat_history:
-            turns = [f"{m.get('role', 'user').capitalize()}: {m.get('content', '')}" for m in chat_history if m.get('content')]
-            history_text = "\n".join(turns)
-
             import re
-            lines_found = re.findall(r'(\d{1,2}"?-[A-Za-z0-9]+-[A-Za-z0-9\-]+)', history_text)
             user_texts = " ".join(m.get("content", "") for m in chat_history if m.get("role") == "user")
             stop_words = {"evaluating", "inspecting", "checking", "testing", "analyzing", "working", "looking", "asking", "writing", "your"}
             raw_names = re.findall(r'(?:my name is|i am(?:\s+an?|\s+inspector|\s+engineer)?)\s+([A-Z][a-z]+)', user_texts, re.IGNORECASE)
             names_found = [n for n in raw_names if n.lower() not in stop_words]
-
-            recalled_facts = []
-            if lines_found:
-                recalled_facts.append(f"- Line / Asset Tag: **{lines_found[-1]}**")
             if names_found:
-                recalled_facts.append(f"- User: **{names_found[-1]}**")
+                user_name = names_found[-1]
 
-            detail = "\n".join(recalled_facts) if recalled_facts else f"In our previous discussion, you noted: \"{chat_history[-1].get('content', '')[:120]}\""
+        # 1. User Identity / Name Queries ("what is my name", "who am i", etc.)
+        user_id_phrases = [
+            "what is my name", "what's my name", "whats my name", "who am i",
+            "do you know my name", "tell me my name", "my name", "what am i called",
+            "who is logged in", "who am i talking as"
+        ]
+        if any(phrase in p for phrase in user_id_phrases):
             return (
-                f"<think>\nRetrieved conversational memory from {len(chat_history)} previous turn(s).\n</think>\n\n"
-                f"Based on our earlier discussion:\n{detail}\n\n"
-                f"How would you like to proceed with this evaluation?"
+                f"<think>\nUser inquired about their identity. Retrieved user profile from active session.\n</think>\n\n"
+                f"Your name is **{user_name}**!\n\n"
+                f"You are currently logged in as the **Lead Inspection Engineer** with **Team rv2** on the Sovereign On-Premise Agentic AI Workbench."
             )
 
-        # 2. Greetings
-        if any(p.startswith(g) or p == g for g in ["hi", "hello", "hey", "hii", "hiii", "good morning", "greetings"]):
+        # 2. Conversational Line / Asset Recall from Chat History
+        if chat_history:
+            import re
+            turns = [f"{m.get('role', 'user').capitalize()}: {m.get('content', '')}" for m in chat_history if m.get('content')]
+            history_text = "\n".join(turns)
+            lines_found = re.findall(r'(\d{1,2}"?-[A-Za-z0-9]+-[A-Za-z0-9\-]+)', history_text)
+            if lines_found and any(w in p for w in ["line", "tag", "asset", "inspecting", "earlier", "before", "said", "mentioned"]):
+                return (
+                    f"<think>\nRecalling asset line from prior conversation turns in memory.\n</think>\n\n"
+                    f"Earlier in our discussion, you noted that you are inspecting line **{lines_found[-1]}**."
+                )
+
+        # 3. Assistant Identity / Capability Queries ("who are you", "what can you do", etc.)
+        assistant_id_phrases = [
+            "who are you", "what are you", "what is your name", "what's your name",
+            "what can you do", "what do you do", "introduce yourself", "tell me about yourself",
+            "what is this app", "what is this workbench"
+        ]
+        if any(phrase in p for phrase in assistant_id_phrases):
             return (
-                f"<think>\nRecognized user greeting. Responding conversationally without running industrial inspection.\n</think>\n\n"
-                f"Hello Sagar! I am your **Sovereign Industrial AI Workbench** assistant (Team rv2 // Build with Bharat 2.0).\n\n"
-                f"I operate fully on-premise to assist with:\n"
-                f"- **Engineering Calculations:** Python scripts for corrosion rates and remaining life.\n"
-                f"- **Regulatory Codes:** Guidance on API 570 and ASME B31.3 statutory provisions.\n"
-                f"- **Autonomous Inspection Audits:** Upload inspection scans (PDF, TXT, CSV, image) or select a benchmark to run our tri-engine verification pipeline.\n\n"
-                f"How can I help you today?"
+                f"<think>\nUser requested introduction and capabilities overview of the sovereign workbench.\n</think>\n\n"
+                f"I am the **Sovereign Industrial AI Workbench** assistant developed by **Team rv2** (Build with Bharat 2.0).\n\n"
+                f"I operate with **zero WAN data egress** to provide air-gapped industrial intelligence:\n"
+                f"- **Autonomous Inspection Audits:** Ingest ultrasonic thickness (UT) scan reports (PDF, TXT, CSV, images) and evaluate statutory limits.\n"
+                f"- **Deterministic CodeAct Sandbox:** Execute sandboxed Python verification scripts for wall loss, corrosion rates, and remaining life.\n"
+                f"- **Regulatory Code Grounding:** Cross-reference statutory clauses from **API 570** (Piping Inspection) and **ASME B31.3** (Process Piping) via local ChromaDB RAG.\n"
+                f"- **Executive Deliverables:** Compile formal Word memos (`.docx`), Excel audit workbooks (`.xlsx`), and presentation slide decks (`.pptx`).\n\n"
+                f"How can I assist you with your inspection or engineering calculations today, {user_name}?"
             )
 
-        # 3. Code / Calculation Request or Coding Engine
+        # 3. User Greetings
+        greeting_words = ["hi", "hello", "hey", "hii", "hiii", "good morning", "good afternoon", "good evening", "greetings", "namaste"]
+        if any(p.startswith(g) or p == g for g in greeting_words):
+            return (
+                f"<think>\nRecognized user greeting. Responding conversationally and outlining available workbench actions.\n</think>\n\n"
+                f"Hello **{user_name}**! Welcome to the **Sovereign Industrial AI Workbench** (Team rv2 // Build with Bharat 2.0).\n\n"
+                f"How can I assist you today? You can:\n"
+                f"1. **Upload an ultrasonic scan report** (or select a benchmark from the sidebar) to audit piping integrity.\n"
+                f"2. **Ask technical questions** on API 570 or ASME B31.3 statutory provisions.\n"
+                f"3. **Request Python calculations** for corrosion rates, t-min, and remaining life."
+            )
+
+        # 4. Explicit Memory / Prior Conversation Summaries
+        memory_queries = ["what did we discuss", "what did i say", "what was my previous", "summarize our discussion", "what were we talking about", "previous conversation"]
+        if chat_history and any(q in p for q in memory_queries):
+            turns = [f"- **{m.get('role', 'user').capitalize()}:** {m.get('content', '')[:120]}" for m in chat_history if m.get('content')]
+            summary = "\n".join(turns[-6:]) if turns else "No prior recorded discussion topics in this session."
+            return (
+                f"<think>\nUser requested summary of prior conversational turns from active memory.\n</think>\n\n"
+                f"Here is a summary of our recent discussion:\n\n{summary}\n\n"
+                f"How would you like to proceed with this evaluation, {user_name}?"
+            )
+
+        # 5. Code / Calculation Request or Coding Engine
         if engine == "coding-engine" or any(w in p for w in ["calculate", "write code", "python code", "script", "function", "write a python", "def "]):
             return (
                 f"<think>\nUser requested Python engineering code. Providing clean, documented implementation.\n</think>\n\n"
@@ -261,15 +313,23 @@ print(f"Deficit: {deficit} mm")
                 f"```"
             )
 
-        # 4. General Technical Q&A
+        # 6. Engineering Standards & Guidance (Only when user specifically asks about piping/standards/corrosion)
+        if any(w in p for w in ["api 570", "asme b31.3", "corrosion", "thickness", "t_min", "t_threshold", "retirement", "piping", "ultrasonic", "ndt", "ut scan", "category m"]):
+            return (
+                f"<think>\nUser asked specific engineering/standards inquiry. Providing grounded regulatory explanation.\n</think>\n\n"
+                f"### Industrial Process Piping Standards (**API 570** & **ASME B31.3**)\n\n"
+                f"Under statutory refinery and petrochemical inspection codes:\n"
+                f"- **Structural Minimum Thickness (T_min):** The minimum allowable pipe wall thickness required to sustain internal design pressure and mechanical loads per ASME B31.3 Equation 3a.\n"
+                f"- **Retirement Threshold (T_threshold):** Calculated as `T_threshold = T_min + Corrosion Safety Margin`. When pipe wall thickness falls below this threshold, mandatory operational de-rating or spool replacement is enforced per API 570 Clause 7.\n"
+                f"- **Corrosion Rate Assessment:** Determined by comparing consecutive ultrasonic survey measurements across operating years.\n\n"
+                f"You can upload an inspection scan or choose a benchmark telemetry file from the left sidebar to run the automated verification pipeline."
+            )
+
+        # 7. General Friendly Technical Q&A Fallback
         return (
-            f"<think>\nUser asked technical inquiry. Formulating clear, grounded engineering response.\n</think>\n\n"
-            f"Regarding **{prompt.strip()}**:\n\n"
-            f"Under industrial process piping codes (**API 570** & **ASME B31.3**):\n"
-            f"- **Structural Minimum ($T_{{\\text{{min}}}}$):** The minimum wall thickness required to contain internal pressure.\n"
-            f"- **Retirement Threshold ($T_{{\\text{{threshold}}}}$):** Structural minimum plus mandatory corrosion safety allowance.\n"
-            f"- **Category M Fluid Service:** Lethal or toxic process streams (e.g. sour gas with $H_2S > 8,500\\text{{ ppm}}$) requiring stringent containment.\n\n"
-            f"To audit specific ultrasonic scan telemetry, upload your report file or select a benchmark to run the autonomous pipeline."
+            f"<think>\nUser asked general inquiry: '{prompt}'. Formulating clear, professional response.\n</think>\n\n"
+            f"Regarding **\"{prompt.strip()}\"**:\n\n"
+            f"I am your Sovereign Industrial AI assistant. You can ask technical engineering questions, request Python calculations for our sandbox VM, or upload an ultrasonic inspection report (PDF, TXT, CSV, image) to run our autonomous multi-engine compliance audit."
         )
 
 

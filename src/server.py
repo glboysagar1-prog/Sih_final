@@ -312,10 +312,15 @@ async def execute_agent_workflow(
     if not active_filepath or not os.path.exists(active_filepath):
         from src.agent.llm_client import llm_gateway, extract_think_cot
         engine_target = "coding-engine" if any(w in query.lower() for w in ["code", "python", "script", "function", "def "]) else "reasoning-engine"
+        system_prompt = (
+            "You are the Sovereign Industrial AI Assistant for Team rv2 (Build with Bharat 2.0). "
+            "The active user is Sagar, Lead Inspection Engineer. "
+            "Respond helpfully, clearly, naturally, and concisely like an advanced AI assistant."
+        )
         llm_resp = llm_gateway.call_model(
             engine_name=engine_target,
             prompt=query,
-            system_prompt="You are the Sovereign Industrial AI Assistant for Team rv2 (Build with Bharat 2.0). Respond helpfully, clearly, and naturally like an advanced AI assistant.",
+            system_prompt=system_prompt,
             chat_history=history_list
         )
         cot_trace, final_text = extract_think_cot(llm_resp)

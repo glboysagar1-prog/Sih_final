@@ -204,6 +204,114 @@ export default function App() {
     }
   };
 
+  // Helper: Format inline markdown tokens
+  const formatInlineText = (str) => {
+    if (!str) return "";
+    const tokens = [];
+    const regex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+    let match;
+    let lastIndex = 0;
+
+    while ((match = regex.exec(str)) !== null) {
+      if (match.index > lastIndex) {
+        tokens.push(str.substring(lastIndex, match.index));
+      }
+      const val = match[0];
+      if (val.startsWith("`") && val.endsWith("`")) {
+        tokens.push(
+          <code key={match.index} className="px-1.5 py-0.5 rounded bg-stone-100 font-mono text-xs text-stone-800 border border-stone-200">
+            {val.slice(1, -1)}
+          </code>
+        );
+      } else if (val.startsWith("**") && val.endsWith("**")) {
+        tokens.push(
+          <strong key={match.index} className="font-semibold text-[#1F1E1D]">
+            {val.slice(2, -2)}
+          </strong>
+        );
+      } else if (val.startsWith("*") && val.endsWith("*")) {
+        tokens.push(
+          <em key={match.index} className="italic text-stone-700">
+            {val.slice(1, -1)}
+          </em>
+        );
+      }
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < str.length) {
+      tokens.push(str.substring(lastIndex));
+    }
+
+    return tokens.length > 0 ? tokens : str;
+  };
+
+  // Helper: Format message markdown blocks cleanly
+  const renderFormattedBlocks = (rawText) => {
+    if (!rawText) return null;
+
+    // Clean up LaTeX formulas to clean readable text
+    const text = rawText
+      .replace(/\$T_\{?\\text\{min\}\}?\$|\$T_min\$/g, "T_min")
+      .replace(/\$T_\{?\\text\{threshold\}\}?\$|\$T_threshold\$/g, "T_threshold")
+      .replace(/\$H_2S\s*>\s*([0-9,]+)\\text\{\s*ppm\}\$/g, "H₂S > $1 ppm")
+      .replace(/<«|»>/g, "")
+      .replace(/\$([^$]+)\$/g, "$1");
+
+    const lines = text.split("\n");
+
+    return (
+      <div className="space-y-1.5 text-[#1F1E1D]">
+        {lines.map((line, idx) => {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            return <div key={idx} className="h-1.5" />;
+          }
+
+          if (trimmed.startsWith("### ")) {
+            return (
+              <h4 key={idx} className="font-semibold text-sm text-[#1F1E1D] mt-2 mb-1">
+                {formatInlineText(trimmed.substring(4))}
+              </h4>
+            );
+          }
+          if (trimmed.startsWith("## ")) {
+            return (
+              <h3 key={idx} className="font-semibold text-base text-[#1F1E1D] mt-2.5 mb-1">
+                {formatInlineText(trimmed.substring(3))}
+              </h3>
+            );
+          }
+
+          if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+            return (
+              <div key={idx} className="flex items-start gap-2 ml-1 text-sm leading-relaxed">
+                <span className="text-[#D97757] font-bold text-xs mt-1 shrink-0">•</span>
+                <span className="flex-1">{formatInlineText(trimmed.substring(2))}</span>
+              </div>
+            );
+          }
+
+          const numMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+          if (numMatch) {
+            return (
+              <div key={idx} className="flex items-start gap-2 ml-1 text-sm leading-relaxed">
+                <span className="font-mono text-xs text-[#D97757] font-semibold mt-0.5 shrink-0">{numMatch[1]}.</span>
+                <span className="flex-1">{formatInlineText(numMatch[2])}</span>
+              </div>
+            );
+          }
+
+          return (
+            <p key={idx} className="leading-relaxed">
+              {formatInlineText(line)}
+            </p>
+          );
+        })}
+      </div>
+    );
+  };
+
   // Helper: Render an assistant message payload
   const renderAssistantContent = (msg) => {
     const isGeneralChat = msg.is_general_chat || !msg.status;
@@ -211,8 +319,8 @@ export default function App() {
     // Mode 1: Clean Conversational / Coding prose (like Claude / ChatGPT)
     if (isGeneralChat) {
       return (
-        <div className="text-sm text-[#1F1E1D] leading-relaxed whitespace-pre-wrap font-sans bg-white border border-[#E5E3DD] p-5 rounded-2xl shadow-2xs">
-          {msg.final_memo_text || msg.reasoning_summary || msg.content}
+        <div className="text-sm text-[#1F1E1D] leading-relaxed font-sans bg-white border border-[#E5E3DD] p-5 rounded-2xl shadow-2xs">
+          {renderFormattedBlocks(msg.final_memo_text || msg.reasoning_summary || msg.content)}
         </div>
       );
     }
@@ -254,8 +362,8 @@ export default function App() {
 
         {/* Executive Memo Narrative */}
         {(msg.final_memo_text || msg.reasoning_summary) && (
-          <div className="text-sm text-[#1F1E1D] leading-relaxed whitespace-pre-wrap font-sans bg-white border border-[#E5E3DD] p-5 rounded-2xl shadow-2xs">
-            {msg.final_memo_text || msg.reasoning_summary}
+          <div className="text-sm text-[#1F1E1D] leading-relaxed font-sans bg-white border border-[#E5E3DD] p-5 rounded-2xl shadow-2xs">
+            {renderFormattedBlocks(msg.final_memo_text || msg.reasoning_summary)}
           </div>
         )}
 
