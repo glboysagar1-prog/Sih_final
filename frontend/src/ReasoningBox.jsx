@@ -112,13 +112,54 @@ export default function ReasoningBox({
 
   const finalSeconds = elapsedDuration ?? Math.max(elapsedTime, 3);
 
+  // Helper to render formatted thoughts with step chips
+  const renderFormattedThoughts = (text) => {
+    if (!text) return null;
+    const lines = text.split("\n");
+    return lines.map((line, idx) => {
+      const trimmed = line.trim();
+      if (!trimmed) return <div key={idx} className="h-1.5" />;
+
+      const stepMatch = trimmed.match(/^(?:###\s*)?(?:Step\s*(\d+)[:.]?|\[STEP\s*(\d+)\])(.*)$/i);
+      if (stepMatch) {
+        const stepNum = (stepMatch[1] || stepMatch[2]).padStart(2, '0');
+        const rest = stepMatch[3];
+        return (
+          <div key={idx} className="flex items-start gap-2 my-1.5">
+            <span className="px-1.5 py-0.5 rounded bg-[#D97757]/15 text-[#C96442] font-bold text-[10px] font-mono tracking-wider shrink-0 border border-[#D97757]/30">
+              STEP {stepNum}
+            </span>
+            <span className="text-stone-800 font-medium leading-relaxed">
+              {rest}
+            </span>
+          </div>
+        );
+      }
+
+      if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+        return (
+          <div key={idx} className="flex items-start gap-2 ml-1 text-xs text-stone-700 leading-relaxed my-0.5">
+            <span className="text-[#D97757] font-bold text-xs mt-0.5 shrink-0">•</span>
+            <span className="flex-1">{trimmed.substring(2)}</span>
+          </div>
+        );
+      }
+
+      return (
+        <p key={idx} className="leading-relaxed text-stone-700 my-0.5">
+          {line}
+        </p>
+      );
+    });
+  };
+
   return (
     <div className="w-full my-2 font-sans select-none">
       {/* Inline Claude-style Header Button */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="group inline-flex items-center gap-2 text-[14px] text-stone-700 hover:text-stone-900 transition-all py-1 px-1 rounded hover:bg-stone-200/50 cursor-pointer focus:outline-none"
+        className="group inline-flex items-center gap-2 text-[14px] text-stone-700 hover:text-stone-900 transition-all py-1 px-1.5 rounded hover:bg-stone-200/50 cursor-pointer focus:outline-none"
         title={isExpanded ? "Click to collapse thoughts" : "Click to view thoughts"}
       >
         {/* Claude Terracotta Asterisk Icon */}
@@ -127,9 +168,15 @@ export default function ReasoningBox({
         {/* Phase Text or Completed "Thought for Xs" */}
         <span className="font-normal text-stone-700">
           {isLoading ? (
-            <span>{THINKING_PHASES[phaseIndex]}</span>
+            <span className="flex items-center gap-1.5">
+              <span>{THINKING_PHASES[phaseIndex]}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#D97757] animate-ping"></span>
+            </span>
           ) : (
-            <span>Thought for {finalSeconds} seconds</span>
+            <span>
+              Thought for {finalSeconds} seconds
+              {thinkingText ? ` (${thinkingText.length.toLocaleString()} chars)` : ""}
+            </span>
           )}
         </span>
 
@@ -153,7 +200,7 @@ export default function ReasoningBox({
       {/* Expandable Thoughts Drawer */}
       {isExpanded && (
         <div className="mt-2.5 ml-2 pl-3.5 border-l-2 border-stone-300 transition-all duration-300">
-          <div className="bg-[#FAF9F5] border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-[#FAF9F5] border border-stone-200 rounded-xl overflow-hidden shadow-xs">
             {/* Drawer Header */}
             <div className="flex items-center justify-between px-3.5 py-2 bg-stone-100/70 border-b border-stone-200 text-[11px] font-mono text-stone-500">
               <span className="flex items-center gap-1.5">
@@ -170,9 +217,9 @@ export default function ReasoningBox({
                 <button
                   type="button"
                   onClick={handleCopy}
-                  className="hover:text-stone-800 transition-colors flex items-center gap-1 text-[11px]"
+                  className="hover:text-stone-800 transition-colors flex items-center gap-1 text-[11px] bg-white px-2 py-0.5 rounded border border-stone-200"
                 >
-                  <i className={`fa-solid ${copied ? "fa-check text-emerald-600" : "fa-copy"}`}></i>
+                  <i className={`fa-solid ${copied ? "fa-check text-emerald-600" : "fa-copy text-stone-400"}`}></i>
                   <span>{copied ? "Copied" : "Copy"}</span>
                 </button>
               )}
@@ -184,14 +231,14 @@ export default function ReasoningBox({
               className="p-4 font-mono text-xs text-stone-700 bg-white max-h-80 overflow-y-auto leading-relaxed whitespace-pre-wrap select-text scroll-smooth"
             >
               {thinkingText ? (
-                thinkingText
+                renderFormattedThoughts(thinkingText)
               ) : isLoading ? (
                 <div className="flex flex-col gap-1.5 text-stone-500 text-[11px]">
                   <div className="flex items-center gap-2 text-[#D97757]">
                     <i className="fa-solid fa-spinner fa-spin text-xs"></i>
                     <span>Actively evaluating engineering constraints...</span>
                   </div>
-                  <div className="text-stone-500 pl-4 border-l border-stone-200 mt-1">
+                  <div className="text-stone-500 pl-4 border-l border-stone-200 mt-1 space-y-0.5">
                     <div>&bull; Grounding regulatory clauses via local ChromaDB RAG</div>
                     <div>&bull; Formulating deterministic CodeAct Python script</div>
                     <div>&bull; Checking T_actual against T_threshold</div>
