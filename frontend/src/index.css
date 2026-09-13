@@ -5,57 +5,26 @@
 @layer base {
   body {
     margin: 0;
-    background-color: #0B0E14;
-    color: #E1E2EB;
-    font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #FAF9F5;
+    color: #1F1E1D;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 }
 
-/* Glassmorphism & Neon Aura Utilities */
-.glass-panel {
-  background: rgba(11, 14, 20, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(58, 73, 75, 0.35);
-}
-
-.glass-panel-elevated {
-  background: rgba(29, 32, 38, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 242, 255, 0.25);
-}
-
-.neon-border-glow-cyan {
-  box-shadow: 0 0 16px -2px rgba(0, 242, 255, 0.25);
-}
-
-.neon-border-glow-amethyst {
-  box-shadow: 0 0 16px -2px rgba(221, 183, 255, 0.2);
-}
-
-.neon-border-glow-danger {
-  box-shadow: 0 0 20px -2px rgba(255, 107, 107, 0.25);
-}
-
-.neon-border-glow-emerald {
-  box-shadow: 0 0 16px -2px rgba(103, 244, 183, 0.25);
-}
-
-/* Dark Theme Industrial Scrollbars */
+/* Subtle Claude Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0B0E14;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1D2026;
+  background: #E5E3DD;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #32353C;
+  background: #C7C5BF;
 }
 
 @keyframes spin-slow {
@@ -69,15 +38,4 @@
 
 .animate-spin-slow {
   animation: spin-slow 8s linear infinite;
-}
-
-.material-symbols-outlined {
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-  display: inline-block;
-  vertical-align: middle;
-  line-height: 1;
-}
-
-.material-symbols-fill {
-  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }

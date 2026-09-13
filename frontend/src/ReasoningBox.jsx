@@ -1,26 +1,66 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// Rotating thinking phases matching Sovereign agent pipeline & DeepSeek-R1 CoT
+/**
+ * Authentic Claude-style Asterisk / Sunburst Icon
+ * Matches Claude's signature terracotta #D97757 radiating 14-spoke emblem.
+ */
+export function ClaudeAsterisk({ className = "w-4 h-4", spinning = false }) {
+  return (
+    <svg
+      className={`${className} ${spinning ? "animate-spin-slow" : ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0 }}
+    >
+      <circle cx="12" cy="12" r="1.6" fill="#D97757" />
+      {[
+        0, 25.7, 51.4, 77.1, 102.8, 128.5, 154.2,
+        180, 205.7, 231.4, 257.1, 282.8, 308.5, 334.2
+      ].map((deg, i) => {
+        const isLong = i % 2 === 0;
+        return (
+          <line
+            key={i}
+            x1="12"
+            y1={isLong ? "2.2" : "3.8"}
+            x2="12"
+            y2="7.8"
+            stroke="#D97757"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            transform={`rotate(${deg} 12 12)`}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+// Realistic rotating thinking phrases matching Claude's CoT & our sovereign agent pipeline
 const THINKING_PHASES = [
-  "Ingesting B-scan ultrasonic point cloud from NVMe cache",
-  "Evaluating localized wall thinning & HIC damage mechanisms",
-  "Cross-referencing ASME B31.3 §304 allowable stress limits",
-  "Grounding API 570 Table 1 formulas via local ChromaDB RAG",
-  "Formulating deterministic CodeAct Python verification script",
-  "Computing T-min structural floor & remaining service life",
-  "Executing isolated sandbox verification (0 WAN Egress)",
-  "Synthesizing statutory engineering memo & MOC package",
+  "Crystallizing",
+  "Pondering",
+  "Reading telemetry data",
+  "Analyzing ultrasonic scan points",
+  "Cross-referencing API 570 & ASME B31.3",
+  "Evaluating localized corrosion rates",
+  "Computing retirement thickness thresholds",
+  "Executing deterministic CodeAct sandbox",
+  "Validating wall loss calculations",
+  "Synthesizing executive memo",
 ];
 
 /**
- * Aetheric Intelligence Cognitive Trace Component
- * Styled after Stitch Dark Glassmorphism with glowing Amethyst (#A855F7 / #DDB7FF) HUD accents.
+ * Claude-style Thinking Component
+ * Supports both active thinking (while workflow runs) and completed state (showing "Thought for Xs").
+ * Clicking expands/collapses the thinking thoughts trace inline.
  */
 export default function ReasoningBox({
   thinkingText = "",
   isLoading = false,
   elapsedDuration = null,
-  modelName = "DeepSeek-R1",
+  modelName = "Qwen3.6-27B CoT",
   defaultExpanded = false
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -70,88 +110,39 @@ export default function ReasoningBox({
     }
   };
 
-  const finalSeconds = elapsedDuration ?? Math.max(elapsedTime, 4);
-
-  // Helper to render formatted thoughts with step chips
-  const renderFormattedThoughts = (text) => {
-    if (!text) return null;
-    const lines = text.split("\n");
-    return lines.map((line, idx) => {
-      const trimmed = line.trim();
-      if (!trimmed) return <div key={idx} className="h-1.5" />;
-
-      const stepMatch = trimmed.match(/^(?:###\s*)?(?:Step\s*(\d+)[:.]?|\[STEP\s*(\d+)\])(.*)$/i);
-      if (stepMatch) {
-        const stepNum = (stepMatch[1] || stepMatch[2]).padStart(2, '0');
-        const rest = stepMatch[3];
-        return (
-          <div key={idx} className="flex items-start gap-2.5 my-2">
-            <span className="px-1.5 py-0.5 rounded bg-[#6F00BE]/40 border border-[#A855F7]/40 text-[#DDB7FF] font-bold text-[10px] shrink-0 font-mono tracking-wider">
-              STEP {stepNum}
-            </span>
-            <span className="text-[#E1E2EB] font-medium leading-relaxed">
-              {rest}
-            </span>
-          </div>
-        );
-      }
-
-      if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-        return (
-          <div key={idx} className="flex items-start gap-2 ml-2 my-0.5 text-xs text-[#B9CACB] leading-relaxed">
-            <span className="text-[#A855F7] font-bold text-xs mt-0.5 shrink-0">•</span>
-            <span className="flex-1">{trimmed.substring(2)}</span>
-          </div>
-        );
-      }
-
-      return (
-        <p key={idx} className="leading-relaxed text-[#B9CACB] my-0.5">
-          {line}
-        </p>
-      );
-    });
-  };
+  const finalSeconds = elapsedDuration ?? Math.max(elapsedTime, 3);
 
   return (
     <div className="w-full my-2 font-sans select-none">
-      {/* Header Button Pill with Amethyst HUD Glow */}
+      {/* Inline Claude-style Header Button */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="group inline-flex items-center gap-2.5 text-xs font-mono py-1.5 px-3 rounded-lg bg-[#1D2026]/90 border border-[#A855F7]/30 hover:border-[#A855F7]/60 text-[#DDB7FF] hover:text-[#E1E2EB] transition-all shadow-[0_0_12px_rgba(168,85,247,0.15)] cursor-pointer focus:outline-none"
-        title={isExpanded ? "Collapse cognitive trace" : "Expand cognitive trace"}
+        className="group inline-flex items-center gap-2 text-[14px] text-stone-700 hover:text-stone-900 transition-all py-1 px-1 rounded hover:bg-stone-200/50 cursor-pointer focus:outline-none"
+        title={isExpanded ? "Click to collapse thoughts" : "Click to view thoughts"}
       >
-        {/* Brain / Neurology Icon with glow */}
-        <span className={`material-symbols-outlined text-sm text-[#DDB7FF] ${isLoading ? "animate-pulse" : ""}`}>
-          psychology
-        </span>
+        {/* Claude Terracotta Asterisk Icon */}
+        <ClaudeAsterisk className="w-4 h-4" spinning={isLoading} />
 
-        {/* Phase Text or Completed Trace */}
-        <span className="font-semibold tracking-wide">
+        {/* Phase Text or Completed "Thought for Xs" */}
+        <span className="font-normal text-stone-700">
           {isLoading ? (
-            <span className="flex items-center gap-2">
-              <span className="text-[#E1E2EB]">{THINKING_PHASES[phaseIndex]}</span>
-              <i className="fa-solid fa-circle-notch fa-spin text-xs text-[#00F2FF]"></i>
-            </span>
+            <span>{THINKING_PHASES[phaseIndex]}</span>
           ) : (
-            <span>
-              {modelName} Cognitive Trace (Thought for {finalSeconds}s
-              {thinkingText ? ` // ${thinkingText.length.toLocaleString()} chars` : ""})
-            </span>
+            <span>Thought for {finalSeconds} seconds</span>
           )}
         </span>
 
-        {/* Live Timer */}
+        {/* Muted Timer (while active) */}
         {isLoading && (
-          <span className="text-[#00F2FF] font-mono text-[11px] bg-[#00F2FF]/10 px-1.5 py-0.2 rounded border border-[#00F2FF]/30">
+          <span className="text-stone-400 font-mono text-xs">
             {elapsedTime}s
           </span>
         )}
 
-        {/* Expand / Collapse Chevron */}
+        {/* Small Subtle Right / Down Chevron */}
         <span
-          className={`text-[#DDB7FF]/70 group-hover:text-[#DDB7FF] text-xs transition-transform duration-200 ${
+          className={`text-stone-400 group-hover:text-stone-600 text-xs transition-transform duration-200 ${
             isExpanded ? "rotate-90" : ""
           }`}
         >
@@ -159,66 +150,57 @@ export default function ReasoningBox({
         </span>
       </button>
 
-      {/* Expandable Cognitive Trace Drawer */}
+      {/* Expandable Thoughts Drawer */}
       {isExpanded && (
-        <div className="mt-2.5 rounded-xl border border-[#A855F7]/40 bg-[#0B0E14]/90 backdrop-blur-md overflow-hidden neon-border-glow-amethyst transition-all duration-300">
-          {/* Drawer Header */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-[#1D2026]/80 border-b border-[#A855F7]/30 text-xs font-mono text-[#DDB7FF]">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#A855F7] shadow-[0_0_8px_#A855F7]"></span>
-              <span className="font-semibold tracking-wider uppercase text-[11px]">
-                {modelName} Autonomous Cognitive Path
+        <div className="mt-2.5 ml-2 pl-3.5 border-l-2 border-stone-300 transition-all duration-300">
+          <div className="bg-[#FAF9F5] border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between px-3.5 py-2 bg-stone-100/70 border-b border-stone-200 text-[11px] font-mono text-stone-500">
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D97757]"></span>
+                <span className="font-medium text-stone-700">{modelName} Reasoning Trace</span>
+                {thinkingText && (
+                  <span className="text-stone-400">
+                    ({thinkingText.length.toLocaleString()} chars)
+                  </span>
+                )}
               </span>
+
               {thinkingText && (
-                <span className="text-[#849495] text-[11px]">
-                  ({thinkingText.length.toLocaleString()} chars • Deterministic)
-                </span>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="hover:text-stone-800 transition-colors flex items-center gap-1 text-[11px]"
+                >
+                  <i className={`fa-solid ${copied ? "fa-check text-emerald-600" : "fa-copy"}`}></i>
+                  <span>{copied ? "Copied" : "Copy"}</span>
+                </button>
               )}
             </div>
 
-            {thinkingText && (
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="hover:text-white text-[#DDB7FF] transition-colors flex items-center gap-1.5 text-[11px] bg-[#6F00BE]/30 hover:bg-[#6F00BE]/50 px-2.5 py-1 rounded border border-[#A855F7]/30"
-              >
-                <i className={`fa-solid ${copied ? "fa-check text-[#67F4B7]" : "fa-copy"}`}></i>
-                <span>{copied ? "Copied" : "Copy Trace"}</span>
-              </button>
-            )}
-          </div>
-
-          {/* Trace Body */}
-          <div
-            ref={contentRef}
-            className="p-4 font-mono text-xs bg-[#0B0E14]/95 text-[#B9CACB] max-h-96 overflow-y-auto leading-relaxed whitespace-pre-wrap select-text scroll-smooth"
-          >
-            {thinkingText ? (
-              renderFormattedThoughts(thinkingText)
-            ) : isLoading ? (
-              <div className="flex flex-col gap-2.5 text-xs text-[#849495] py-2">
-                <div className="flex items-center gap-2 text-[#00F2FF] font-semibold">
-                  <i className="fa-solid fa-spinner fa-spin text-sm"></i>
-                  <span>Evaluating engineering constraints & localized wall thinning...</span>
-                </div>
-                <div className="text-outline pl-4 border-l border-[#3A494B] space-y-1 mt-1 text-[11px]">
-                  <div className="flex items-center gap-1.5 text-[#E1E2EB]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#67F4B7]"></span>
-                    <span>1. Ingesting B-scan ultrasonic array point cloud (10mm grid spacing)</span>
+            {/* Thoughts Body */}
+            <div
+              ref={contentRef}
+              className="p-4 font-mono text-xs text-stone-700 bg-white max-h-80 overflow-y-auto leading-relaxed whitespace-pre-wrap select-text scroll-smooth"
+            >
+              {thinkingText ? (
+                thinkingText
+              ) : isLoading ? (
+                <div className="flex flex-col gap-1.5 text-stone-500 text-[11px]">
+                  <div className="flex items-center gap-2 text-[#D97757]">
+                    <i className="fa-solid fa-spinner fa-spin text-xs"></i>
+                    <span>Actively evaluating engineering constraints...</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[#E1E2EB]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#00F2FF]"></span>
-                    <span>2. Grounding API 570 Table 1 and ASME B31.3 allowable stress</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[#E1E2EB]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#A855F7]"></span>
-                    <span>3. Synthesizing deterministic CodeAct script for sandbox validation</span>
+                  <div className="text-stone-500 pl-4 border-l border-stone-200 mt-1">
+                    <div>&bull; Grounding regulatory clauses via local ChromaDB RAG</div>
+                    <div>&bull; Formulating deterministic CodeAct Python script</div>
+                    <div>&bull; Checking T_actual against T_threshold</div>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <span className="text-[#849495] italic">No reasoning trace logged for this step.</span>
-            )}
+              ) : (
+                <span className="text-stone-400 italic">No reasoning trace generated for this step.</span>
+              )}
+            </div>
           </div>
         </div>
       )}
