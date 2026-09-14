@@ -163,9 +163,10 @@ def act_node(state: AgentState) -> Dict[str, Any]:
     # STEP 1: Document / Telemetry Ingestion
     if active_step == "ingest_telemetry":
         file_path = state.get("file_path")
+        file_label = os.path.basename(file_path) if (file_path and os.path.exists(file_path)) else "telemetry text"
         if file_path and os.path.exists(file_path):
             data = parse_inspection_document(file_path)
-            logs.append(f"[ACT: INGEST] Parsed '{os.path.basename(file_path)}': Extracted {len(data.get('measurement_points', []))} points.")
+            logs.append(f"[ACT: INGEST] Parsed '{file_label}': Extracted {len(data.get('measurement_points', []))} points.")
         else:
             data = parse_inspection_text(query)
             logs.append(f"[ACT: INGEST] Direct text input parsed: Extracted {len(data.get('measurement_points', []))} points.")
@@ -173,8 +174,49 @@ def act_node(state: AgentState) -> Dict[str, Any]:
         updates["extracted_text"] = data.get("raw_text", query)
         updates["extracted_metrics"] = data
 
+        # Validate extracted telemetry against industrial inspection standards
+        if not data.get("is_valid_document", True):
+            doc_type = data.get("document_type", "IRRELEVANT_NON_INSPECTION")
+            rejection_reason = data.get("rejection_reason", "No industrial piping or ultrasonic thickness telemetry detected.")
+            updates["is_invalid_document"] = True
+            updates["document_rejection_reason"] = rejection_reason
+            updates["calculation_status"] = "INVALID_DOCUMENT"
+
+            rejection_memo = (
+                f"### ⚠️ Invalid / Irrelevant Document Detected\n\n"
+                f"The uploaded document **`{file_label}`** does not contain valid industrial inspection telemetry, ultrasonic thickness readings, or piping specifications.\n\n"
+                f"**Audit Findings:**\n"
+                f"- **Classification:** `{doc_type}`\n"
+                f"- **Validation Detail:** {rejection_reason}\n\n"
+                f"**Action Required:**\n"
+                f"Please upload a valid inspection report or NDT thickness measurement document (such as an API 570 ultrasonic scan log, piping inspection sheet, or thickness survey in `.xlsx`, `.csv`, `.txt`, `.pdf`, or image format) containing:\n"
+                f"1. **Line Number / Pipe Identifier** (e.g. `12\"-RG-3301-CS` or `10\"-HC-1004`)\n"
+                f"2. **Ultrasonic Thickness (UT) readings** at specific inspection locations\n"
+                f"3. **Minimum Structural / Retirement Thickness ($T_{{min}}$ or $T_{{threshold}}$)**\n"
+                f"4. **Applicable Engineering Code** (e.g. API 570, ASME B31.3)\n"
+            )
+            updates["final_memo_text"] = rejection_memo
+            updates["deep_thinking_cot"] = (
+                f"<think>\n"
+                f"Extracted document context from '{file_label}'.\n"
+                f"Evaluated content against statutory industrial inspection criteria (API 570 / ASME B31.3).\n"
+                f"Rejection: {rejection_reason}.\n"
+                f"Zero Hallucination Policy: Suppressing synthetic thickness values and skipping code calculation.\n"
+                f"Prompting lead engineer to provide authentic NDT inspection telemetry.\n"
+                f"</think>"
+            )
+            # Short-circuit remaining plan steps to prevent false calculation or deliverables
+            updates["plan"] = ["ingest_telemetry"]
+            updates["current_step_index"] = 1
+            logs.append(f"[VALIDATOR] Document '{file_label}' rejected ({doc_type}). Short-circuiting pipeline.")
+            end_span(span, {"active_step": active_step, "valid": False})
+            return updates
+
     # STEP 2: Sovereign Local RAG Standards Retrieval
     elif active_step == "retrieve_standards":
+        if state.get("is_invalid_document"):
+            end_span(span, {"active_step": active_step, "skipped": True})
+            return updates
         extracted = state.get("extracted_text", "")
         chunks = query_standards(f"{query} {extracted[:150]}", n_results=3)
         updates["retrieved_context"] = chunks
@@ -184,6 +226,9 @@ def act_node(state: AgentState) -> Dict[str, Any]:
 
     # STEP 3: Deep Thinking Reasoning (<think> CoT)
     elif active_step == "reason_compliance":
+        if state.get("is_invalid_document"):
+            end_span(span, {"active_step": active_step, "skipped": True})
+            return updates
         extracted = state.get("extracted_text", "")
         metrics = state.get("extracted_metrics", {})
         retrieved = state.get("retrieved_context", [])
@@ -213,6 +258,9 @@ def act_node(state: AgentState) -> Dict[str, Any]:
 
     # STEP 4: Deterministic Sandboxed CodeAct Verification
     elif active_step == "calculate_codeact":
+        if state.get("is_invalid_document"):
+            end_span(span, {"active_step": active_step, "skipped": True})
+            return updates
         extracted = state.get("extracted_text", "")
         final_memo = state.get("final_memo_text", "")
         metrics = state.get("extracted_metrics", {})
@@ -234,6 +282,13 @@ def act_node(state: AgentState) -> Dict[str, Any]:
 
     # STEP 5: Multi-Deliverable Compilation
     elif active_step == "compile_deliverables":
+        if state.get("is_invalid_document") or state.get("calculation_status") == "INVALID_DOCUMENT":
+            updates["deliverables"] = {}
+            updates["generated_report_path"] = None
+            logs.append("[ACT: DELIVERABLES] Skipped deliverable generation for invalid/irrelevant document.")
+            end_span(span, {"active_step": active_step, "skipped": True})
+            return updates
+
         metrics = state.get("extracted_metrics", {})
         sandbox_res = {
             "status": state.get("calculation_status", "PASS"),
@@ -303,6 +358,21 @@ def deliver_node(state: AgentState) -> Dict[str, Any]:
     trace = state.get("langfuse_trace")
     span = create_span(trace, "deliver-node", {"step": "deliver"})
 
+    logs = list(state.get("execution_logs", []))
+
+    if state.get("is_invalid_document") or state.get("calculation_status") == "INVALID_DOCUMENT":
+        logs.append(
+            "[DELIVER: SOVEREIGN AUDIT] Invalid/irrelevant document rejected. "
+            "No compliance certificates or deliverable files generated."
+        )
+        end_span(span, {"status": "INVALID_DOCUMENT", "deliverable_count": 0})
+        flush_trace(trace)
+        return {
+            "deliverables": {},
+            "generated_report_path": None,
+            "execution_logs": logs
+        }
+
     deliverables = dict(state.get("deliverables", {}))
     metrics = state.get("extracted_metrics", {})
     sandbox_res = {
@@ -321,7 +391,6 @@ def deliver_node(state: AgentState) -> Dict[str, Any]:
     memo_path = deliverables.get("docx", "")
     sha256_hash = compute_sha256(memo_path) if (memo_path and os.path.exists(memo_path)) else "N/A"
 
-    logs = list(state.get("execution_logs", []))
     logs.append(
         f"[DELIVER: SOVEREIGN AUDIT] Deliverables finalized. SHA-256: {sha256_hash[:20]}... | "
         f"Zero WAN Egress Verified (Team rv2 // Build with Bharat 2.0)."
@@ -392,6 +461,8 @@ def run_workbench_workflow(user_query: str, file_path: str = "",
         "generated_code": "",
         "sandbox_output": "",
         "calculation_status": "",
+        "is_invalid_document": False,
+        "document_rejection_reason": None,
         "generated_report_path": None,
         "final_memo_text": "",
         "deliverables": {},

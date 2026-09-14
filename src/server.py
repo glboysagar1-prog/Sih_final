@@ -237,6 +237,12 @@ async def upload_file_preview(file: UploadFile = File(...)):
                 preview += (page.extract_text() or "") + "\n"
         except Exception:
             preview = f"[PDF file uploaded: {len(content):,} bytes]"
+    elif safe_filename.lower().endswith((".xlsx", ".xls")):
+        try:
+            from src.tools.ocr_tool import extract_text_from_excel
+            preview = extract_text_from_excel(dest_path)[:5000]
+        except Exception:
+            preview = f"[Excel spreadsheet uploaded: {len(content):,} bytes]"
     else:
         preview = f"[File '{safe_filename}' uploaded successfully: {len(content):,} bytes. Ready for Vision/OCR processing.]"
 
@@ -364,6 +370,8 @@ async def execute_agent_workflow(
 
     memo_path = result.get("generated_report_path", "")
     sha256_hash = compute_sha256(memo_path) if (memo_path and os.path.exists(memo_path)) else "N/A"
+    is_invalid_doc = bool(result.get("is_invalid_document") or result.get("calculation_status") == "INVALID_DOCUMENT")
+    deliverables = result.get("deliverables", {})
 
     return {
         "success": True,
@@ -374,18 +382,20 @@ async def execute_agent_workflow(
         "selected_model": result.get("selected_model"),
         "model_endpoint": result.get("model_endpoint", {}),
         "status": result.get("calculation_status"),
+        "is_invalid_document": is_invalid_doc,
+        "document_rejection_reason": result.get("document_rejection_reason"),
         "deep_thinking_cot": result.get("deep_thinking_cot", ""),
         "reasoning_summary": result.get("final_memo_text", ""),
         "generated_code": result.get("generated_code"),
         "sandbox_output": result.get("sandbox_output"),
         "docx_filename": os.path.basename(memo_path) if memo_path else "",
-        "docx_download_url": f"/api/download/{os.path.basename(memo_path)}" if memo_path else "",
-        "xlsx_download_url": "/api/download/Refinery_Piping_Thickness_Log.xlsx",
-        "pptx_download_url": "/api/download/Refinery_Inspection_Executive_Brief.pptx",
+        "docx_download_url": f"/api/download/{os.path.basename(memo_path)}" if (memo_path and not is_invalid_doc) else None,
+        "xlsx_download_url": "/api/download/Refinery_Piping_Thickness_Log.xlsx" if (deliverables.get("xlsx") and not is_invalid_doc) else None,
+        "pptx_download_url": "/api/download/Refinery_Inspection_Executive_Brief.pptx" if (deliverables.get("pptx") and not is_invalid_doc) else None,
         "plan": result.get("plan", []),
         "completed_steps": result.get("completed_steps", []),
         "retrieved_context": result.get("retrieved_context", []),
-        "deliverables": result.get("deliverables", {}),
+        "deliverables": deliverables,
         "sha256_fingerprint": sha256_hash,
         "execution_logs": result.get("execution_logs", []),
         "extracted_metrics": result.get("extracted_metrics", {}),

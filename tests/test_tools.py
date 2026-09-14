@@ -51,6 +51,16 @@ print(status)
         self.assertTrue(os.path.exists(pptx_path))
         self.assertTrue(pptx_path.endswith(".pptx"))
 
+    def test_excel_parsing_and_relevance_validation(self):
+        book_xlsx = os.path.join(INPUTS_DIR, "uploads", "Book.xlsx")
+        if os.path.exists(book_xlsx):
+            data = parse_inspection_document(book_xlsx)
+            self.assertFalse(data["is_valid_document"])
+            self.assertEqual(data["status"], "INVALID_DOCUMENT")
+            self.assertEqual(data["document_type"], "COMMERCIAL_INVOICE")
+            self.assertIn("commercial invoice", data["rejection_reason"].lower())
+            self.assertNotIn("PK\x03\x04", data["raw_text"])
+
     def test_sovereign_rag_standards(self):
         from src.tools.rag_tool import query_standards
         chunks = query_standards("retirement threshold 3.30 mm API 570")

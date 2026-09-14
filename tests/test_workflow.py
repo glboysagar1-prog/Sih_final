@@ -81,6 +81,21 @@ RG-05      High-Pressure Bypass Orifice Flange  10.31         4.80            3.
                 os.remove(rg_path)
 
 
+    def test_invalid_document_workflow(self):
+        book_xlsx = os.path.join(INPUTS_DIR, "uploads", "Book.xlsx")
+        if os.path.exists(book_xlsx):
+            result = run_workbench_workflow(
+                user_query='Analyze uploaded inspection report "Book.xlsx" against API 570',
+                file_path=book_xlsx
+            )
+            self.assertEqual(result["calculation_status"], "INVALID_DOCUMENT")
+            self.assertTrue(result["is_invalid_document"])
+            self.assertEqual(result["deliverables"], {})
+            self.assertIsNone(result["generated_report_path"])
+            self.assertIn("Invalid / Irrelevant Document Detected", result["final_memo_text"])
+            self.assertIn("Please upload a valid inspection report", result["final_memo_text"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

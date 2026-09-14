@@ -367,6 +367,75 @@ export default function App() {
       );
     }
 
+    // Mode 1.5: Invalid or Irrelevant Document Rejection
+    const isInvalidDoc =
+      msg.status === "INVALID_DOCUMENT" ||
+      msg.is_invalid_document ||
+      msg.extracted_metrics?.is_valid_document === false;
+
+    if (isInvalidDoc) {
+      return (
+        <div className="flex flex-col gap-4 self-start w-full">
+          {/* Amber Warning Dossier Banner */}
+          <div className="p-4.5 rounded-2xl border border-amber-300 bg-amber-50/90 text-amber-950 shadow-2xs">
+            <div className="flex items-start gap-3.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 text-amber-800 flex items-center justify-center shrink-0 text-base mt-0.5">
+                <i className="fa-solid fa-triangle-exclamation"></i>
+              </div>
+              <div className="space-y-1.5 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold tracking-tight uppercase">
+                    INVALID OR IRRELEVANT DOCUMENT DETECTED
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-200/80 text-amber-900 border border-amber-300 uppercase">
+                    {msg.extracted_metrics?.document_type || "NON-INSPECTION DATA"}
+                  </span>
+                </div>
+                <p className="text-xs text-amber-900/90 leading-relaxed font-sans">
+                  The uploaded file does not contain industrial piping inspection telemetry, ultrasonic thickness readings, or API 570 / ASME specifications.
+                </p>
+                {msg.document_rejection_reason && (
+                  <div className="text-[11px] font-mono text-amber-800 bg-white/70 px-2.5 py-1 rounded-lg border border-amber-200/70 inline-block">
+                    Detail: {msg.document_rejection_reason}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Narrative & Requirements */}
+          <div className="text-sm text-[#1F1E1D] leading-relaxed font-sans bg-white border border-[#E5E3DD] p-5 rounded-2xl shadow-2xs">
+            {renderFormattedBlocks(msg.final_memo_text || msg.reasoning_summary || msg.content)}
+          </div>
+
+          {/* Interactive Re-upload Card */}
+          <div className="bg-[#FAF9F5] border border-dashed border-[#D97757]/40 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-[#D97757]/15 text-[#D97757] flex items-center justify-center text-lg">
+                <i className="fa-solid fa-file-arrow-up"></i>
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-[#1F1E1D]">
+                  Upload Valid Piping Inspection Telemetry
+                </div>
+                <div className="text-[11px] text-stone-500 font-sans">
+                  Accepts API 570 UT thickness scans, NDT logs, CSV tables, or Excel workbooks (.xlsx, .csv, .pdf, .txt)
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              className="px-4 py-2 bg-[#D97757] hover:bg-[#C96442] text-white text-xs font-semibold rounded-xl transition-all shadow-2xs cursor-pointer flex items-center gap-2 shrink-0"
+            >
+              <i className="fa-solid fa-upload text-xs"></i>
+              <span>Select Valid File</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     // Mode 2: Industrial Inspection & Telemetry Compliance Suite
     const criticalPt = msg.extracted_metrics?.critical_points?.[0];
     const thresh = msg.extracted_metrics?.thresholds?.t_threshold || 4.88;

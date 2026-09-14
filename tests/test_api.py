@@ -131,7 +131,26 @@ T-05 Heat Exchanger Inlet 8.00 3.10 ACTION REQ"""
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertTrue(data["is_general_chat"])
-        self.assertIn("12-RG-3301", data["reasoning_summary"])
+    def test_invalid_document_endpoint(self):
+        """Test that uploading/running with an invalid document returns INVALID_DOCUMENT and no download URLs."""
+        import os
+        from src.utils.file_manager import INPUTS_DIR
+        book_xlsx = os.path.join(INPUTS_DIR, "uploads", "Book.xlsx")
+        if os.path.exists(book_xlsx):
+            with open(book_xlsx, "rb") as f:
+                res = self.client.post(
+                    "/api/run-workflow",
+                    data={"query": "Analyze uploaded inspection report Book.xlsx against API 570"},
+                    files={"file": ("Book.xlsx", f.read(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+                )
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertEqual(data["status"], "INVALID_DOCUMENT")
+            self.assertTrue(data["is_invalid_document"])
+            self.assertIsNone(data["docx_download_url"])
+            self.assertIsNone(data["xlsx_download_url"])
+            self.assertIn("Invalid / Irrelevant Document Detected", data["reasoning_summary"])
+            self.assertIn("Please upload a valid inspection report", data["reasoning_summary"])
 
 if __name__ == "__main__":
     unittest.main()

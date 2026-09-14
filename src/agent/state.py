@@ -37,6 +37,10 @@ class AgentState(TypedDict):
     sandbox_output: str
     calculation_status: str  # 'PASS', 'FAIL - CRITICAL BREACH', etc.
     
+    # Document validation status
+    is_invalid_document: Optional[bool]
+    document_rejection_reason: Optional[str]
+    
     # Final deliverables
     generated_report_path: Optional[str]  # Primary .docx memo path
     final_memo_text: str
