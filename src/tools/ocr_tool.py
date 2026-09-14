@@ -17,43 +17,69 @@ def encode_image_base64(filepath: str) -> str:
 
 
 def parse_image_with_vision_model(filepath: str) -> str:
-    """Passes the image to the local Vision LLM (e.g., Qwen2.5-VL via local Ollama/vLLM)."""
-    base64_image = encode_image_base64(filepath)
+    """Passes the image to available vision engines (Apple Silicon MLX, Ollama, Tesseract OCR)."""
+    mlx_url = os.environ.get("MLX_BASE_URL", "http://127.0.0.1:5001")
+    prompt_text = (
+        "Extract all text, tables, and diagram descriptions from this image. "
+        "If this is an inspection report, extract all metadata and measurement points."
+    )
 
-    payload = {
-        "model": "qwen2.5-vl",  # Local vision model
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "Extract all text, tables, and diagram descriptions from this image. "
-                            "If this is an inspection report, extract all metadata and measurement points."
-                        ),
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{base64_image}"},
-                    },
-                ],
-            }
-        ],
-        "temperature": 0.0,
-    }
-
+    # 1. Attempt Apple Silicon MLX GPU endpoint (server1.py) if running
     try:
-        # Calls local air-gapped inference endpoint
-        response = requests.post(
-            "http://localhost:11434/v1/chat/completions",
-            json=payload,
-            timeout=30,
-        )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        raise RuntimeError(f"Vision extraction failed: {e}")
+        with open(filepath, "rb") as img_file:
+            files = {"image": (os.path.basename(filepath), img_file, "image/png")}
+            data = {"prompt": prompt_text}
+            resp = requests.post(f"{mlx_url}/describe", files=files, data=data, timeout=5)
+            if resp.status_code == 200:
+                result = resp.json()
+                text = result.get("description", "").strip()
+                if text:
+                    return text
+    except Exception:
+        pass
+
+    # 2. Attempt local Ollama endpoint if running with vision model
+    try:
+        ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        base64_image = encode_image_base64(filepath)
+        payload = {
+            "model": "qwen2.5-vl",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt_text},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}"}},
+                    ],
+                }
+            ],
+            "temperature": 0.0,
+        }
+        response = requests.post(f"{ollama_url}/v1/chat/completions", json=payload, timeout=10)
+        if response.status_code == 200:
+            content = response.json()["choices"][0]["message"]["content"].strip()
+            if content:
+                return content
+    except Exception:
+        pass
+
+    # 3. Fallback to sovereign local Tesseract OCR engine
+    try:
+        import pytesseract
+        from PIL import Image
+        img = Image.open(filepath)
+        tess_text = pytesseract.image_to_string(img).strip()
+        if tess_text:
+            return tess_text
+    except Exception:
+        pass
+
+    # 4. Graceful fallback notice (never raise unhandled exception that crashes Temporal)
+    return (
+        f"[Vision / OCR Extraction Notice: Unable to extract text from '{os.path.basename(filepath)}'. "
+        f"Neither local MLX (server1.py), Ollama vision models, nor Tesseract OCR could parse legible text. "
+        f"Please upload a clearer image or tabular data in CSV/Excel/PDF format.]"
+    )
 
 
 def extract_text_from_excel(filepath: str) -> str:
@@ -99,21 +125,23 @@ def validate_inspection_relevance(content: str) -> tuple:
 
     text_lower = content.lower()
 
-    # Domain keywords indicating industrial piping / NDT / inspection
-    inspection_keywords = [
-        "inspection", "thickness", "ultrasonic", "api 570", "asme", "corrosion",
-        "t_min", "t-min", "t_thresh", "nominal", "wall loss", "piping", "pipe",
-        "spool", "ndt", "nde", "ut-", "cml", "tml", "pressure vessel", "hydrotest",
-        "schedule 40", "schedule 80", "carbon steel", "alloy", "remaining life",
-        "flange", "weld", "cui", "circuit", "caliper", "probe", "retire"
+    # Domain keyword patterns indicating industrial piping / NDT / inspection
+    inspection_patterns = [
+        r"\binspection\b", r"\bthickness\b", r"\bultrasonic\b", r"\bapi\s*570\b",
+        r"\basme\b", r"\bcorrosion\b", r"\bt[-_]?min\b", r"\bt[-_]?thresh\b",
+        r"\bnominal\b", r"\bwall\s*loss\b", r"\bpiping\b", r"\bpipe\b",
+        r"\bspool\b", r"\bndt\b", r"\bnde\b", r"\but-\d+\b", r"\bcml\b", r"\btml\b",
+        r"\bpressure\s*vessel\b", r"\bhydrotest\b", r"\bschedule\s*\d+\b",
+        r"\bcarbon\s*steel\b", r"\bremaining\s*life\b", r"\bflange\b", r"\bweld\b",
+        r"\bcui\b", r"\bcaliper\b", r"\bprobe\b", r"\bretire\w*\b"
     ]
 
-    matched_keywords = [kw for kw in inspection_keywords if kw in text_lower]
+    has_inspection_keyword = any(re.search(p, text_lower) for p in inspection_patterns)
 
     # Look for characteristic point tags (e.g. RG-01, T-01, P-02, UT-104) followed by numbers
     has_point_readings = bool(re.search(r"\b[A-Za-z]{1,6}-?\d+\b[^\n\d]*\d+\.\d+", content))
 
-    if len(matched_keywords) == 0 and not has_point_readings:
+    if not has_inspection_keyword and not has_point_readings:
         # Detect non-inspection categories for clearer user feedback
         if any(w in text_lower for w in ["invoice", "goods", "quantity", "rate", "amount", "total", "mrp", "hsn", "diwali"]):
             doc_type = "COMMERCIAL_INVOICE"
@@ -146,7 +174,7 @@ def parse_inspection_document(filepath: str) -> Dict[str, Any]:
             for page in reader.pages:
                 content += (page.extract_text() or "") + "\n"
         except Exception as e:
-            raise RuntimeError(f"Failed to parse PDF document: {e}")
+            content = f"[PDF parsing failed: {e}]"
 
     # Route 2: Image files (PNG, JPG)
     elif ext in [".png", ".jpg", ".jpeg", ".webp"]:

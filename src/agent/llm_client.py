@@ -9,7 +9,7 @@ import time
 from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 from src.utils.tracing import create_generation
 from src.tools.ocr_tool import parse_inspection_text
@@ -22,6 +22,7 @@ class LLMGateway:
         self.mode = os.environ.get("WORKBENCH_MODE", "cloud").lower()
         self.groq_api_key = os.environ.get("GROQ_API_KEY", "")
         self.ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        self.mlx_base_url = os.environ.get("MLX_BASE_URL", "http://127.0.0.1:5001")
 
     def call_model(self, engine_name: str, prompt: str, system_prompt: Optional[str] = None,
                    temperature: Optional[float] = None,
@@ -36,9 +37,8 @@ class LLMGateway:
         if self.mode == "cloud" and active_key:
             result = self._call_groq(engine_name, prompt, system_prompt, active_key, temp, context_metrics, chat_history)
             model_name = "groq/qwen3.8-27b"
-        elif self.mode == "local":
-            result = self._call_ollama(engine_name, prompt, system_prompt, context_metrics, chat_history)
-            model_name = "ollama/qwen2.5-coder:1.5b"
+        elif self.mode in ["local", "mlx"]:
+            result, model_name = self._call_local_stack(engine_name, prompt, system_prompt, temp, context_metrics, chat_history)
         else:
             result = self._offline_generator(engine_name, prompt, context_metrics, chat_history)
             model_name = f"offline/{engine_name}"
@@ -93,6 +93,61 @@ class LLMGateway:
             return self._offline_generator(engine, prompt, context_metrics, chat_history)
         except Exception:
             return self._offline_generator(engine, prompt, context_metrics, chat_history)
+
+    def _call_local_stack(self, engine: str, prompt: str, system_prompt: Optional[str],
+                          temperature: float, context_metrics: Optional[dict],
+                          chat_history: Optional[List[Dict[str, str]]] = None) -> tuple[str, str]:
+        """Dispatch to local Apple Silicon MLX GPU server1.py, with graceful fallback to Ollama then offline."""
+        # 1. Attempt local MLX server (Apple Silicon GPU microservice)
+        mlx_res = self._call_mlx(engine, prompt, system_prompt, temperature, chat_history)
+        if mlx_res is not None and mlx_res.strip():
+            model_label = "mlx/qwen2.5-vl-3b" if "vision" in engine else "mlx/qwen3.5-4b"
+            return mlx_res, model_label
+
+        # 2. Attempt local Ollama
+        ollama_res = self._call_ollama(engine, prompt, system_prompt, context_metrics, chat_history)
+        if ollama_res and not ollama_res.startswith("EXECUTIVE ENGINEERING COMPLIANCE MEMO"):
+            return ollama_res, "ollama/qwen2.5-coder:1.5b"
+
+        # 3. Deterministic offline generator fallback
+        return self._offline_generator(engine, prompt, context_metrics, chat_history), f"offline/{engine}"
+
+    def _call_mlx(self, engine: str, prompt: str, system_prompt: Optional[str],
+                  temperature: float,
+                  chat_history: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
+        """Execute request via local Apple Silicon MLX microservice (server1.py on port 5001)."""
+        try:
+            import requests
+            messages = []
+            base_sys = system_prompt or "You are the Sovereign Industrial AI Assistant for Team rv2 (Build with Bharat 2.0)."
+            if "Sagar" not in base_sys:
+                base_sys += " The active user is Sagar, Lead Inspection Engineer."
+            messages.append({"role": "system", "content": base_sys})
+
+            if chat_history:
+                for m in chat_history:
+                    role = m.get("role", "user")
+                    content = m.get("content", "")
+                    if role in ["user", "assistant"] and content:
+                        messages.append({"role": role, "content": content})
+            messages.append({"role": "user", "content": prompt})
+
+            model_alias = "vision-engine" if "vision" in engine else "reasoning-engine"
+            payload = {
+                "model": model_alias,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": 1500
+            }
+            resp = requests.post(f"{self.mlx_base_url}/v1/chat/completions", json=payload, timeout=45)
+            if resp.status_code == 200:
+                data = resp.json()
+                choices = data.get("choices", [])
+                if choices and "message" in choices[0]:
+                    return choices[0]["message"].get("content", "")
+            return None
+        except Exception:
+            return None
 
     def _call_ollama(self, engine: str, prompt: str, system_prompt: Optional[str],
                      context_metrics: Optional[dict],

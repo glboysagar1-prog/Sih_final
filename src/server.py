@@ -20,7 +20,7 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
 from src.agent.graph import run_workbench_workflow
 from src.agent.router import route_task, MODEL_REGISTRY
@@ -153,6 +153,18 @@ def favicon():
     return Response(status_code=204)
 
 
+def get_mlx_status():
+    """Query local Apple Silicon MLX microservice (server1.py on port 5001)."""
+    try:
+        import requests
+        res = requests.get(os.environ.get("MLX_BASE_URL", "http://127.0.0.1:5001") + "/health", timeout=0.8)
+        if res.status_code == 200:
+            return res.json()
+    except Exception:
+        pass
+    return {"status": "offline", "note": "Run 'python3 server1.py' to launch local MLX engine."}
+
+
 @app.get("/api/health")
 def health_check():
     """Health check endpoint proving sovereign on-premise execution."""
@@ -164,6 +176,7 @@ def health_check():
         "airgap_status": "SECURE",
         "zero_wan_egress": True,
         "active_models": list(MODEL_REGISTRY.keys()),
+        "mlx_engine": get_mlx_status(),
         "data_formulator_url": "http://localhost:5567"
     }
 

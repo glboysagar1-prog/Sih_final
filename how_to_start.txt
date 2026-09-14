@@ -16,3 +16,6 @@ Step 3:temporal server start-dev
 Step 1:python3 -m src.orchestration.worker
 //data formulator
 Step 1:python3 -m src.agents.data_formulator
+
+//phase 2 local air-gapped mlx model engine (qwen 2.5 vl & qwen 3.5 4b)
+Step 1: python3 server1.py
